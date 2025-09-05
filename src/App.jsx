@@ -1,27 +1,64 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, Menu, X, FileText, Mic, Book, AlertTriangle } from 'lucide-react';
+import { Shield, Menu, X, FileText, Mic, Book, AlertTriangle, User, Crown, LogOut } from 'lucide-react';
+import { Toaster } from 'react-hot-toast';
 import StateSelector from './components/StateSelector';
 import ScenarioSelector from './components/ScenarioSelector';
 import RightsGuide from './components/RightsGuide';
 import RecordButton from './components/RecordButton';
 import IncidentReport from './components/IncidentReport';
+import AuthModal from './components/auth/AuthModal';
+import PricingModal from './components/subscription/PricingModal';
 import Button from './components/ui/Button';
 import Card from './components/ui/Card';
 import { stateData, scenarios } from './data/stateData';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { locationService } from './services/location';
 
-function App() {
+const AppContent = () => {
   const [selectedState, setSelectedState] = useState('');
   const [selectedScenario, setSelectedScenario] = useState(null);
   const [activeSection, setActiveSection] = useState('guide');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [recordings, setRecordings] = useState([]);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [pricingModalOpen, setPricingModalOpen] = useState(false);
+  const [locationDetected, setLocationDetected] = useState(false);
 
-  // Auto-detect location (simulated)
+  const { user, signOut, isPremium, loading } = useAuth();
+
+  // Auto-detect location
   useEffect(() => {
-    // In a real app, you'd use geolocation API and reverse geocoding
-    const commonStates = ['CA', 'NY', 'TX', 'FL'];
-    const randomState = commonStates[Math.floor(Math.random() * commonStates.length)];
-    setSelectedState(randomState);
+    const detectLocation = async () => {
+      try {
+        if (locationService.isLocationAvailable()) {
+          const permission = await locationService.requestLocationPermission();
+          
+          if (permission === 'granted') {
+            const currentState = await locationService.getCurrentState();
+            setSelectedState(currentState.stateCode);
+            setLocationDetected(true);
+          } else {
+            // Fallback to common states
+            const commonStates = ['CA', 'NY', 'TX', 'FL'];
+            const randomState = commonStates[Math.floor(Math.random() * commonStates.length)];
+            setSelectedState(randomState);
+          }
+        } else {
+          // Fallback for browsers without geolocation
+          const commonStates = ['CA', 'NY', 'TX', 'FL'];
+          const randomState = commonStates[Math.floor(Math.random() * commonStates.length)];
+          setSelectedState(randomState);
+        }
+      } catch (error) {
+        console.error('Location detection failed:', error);
+        // Fallback to common states
+        const commonStates = ['CA', 'NY', 'TX', 'FL'];
+        const randomState = commonStates[Math.floor(Math.random() * commonStates.length)];
+        setSelectedState(randomState);
+      }
+    };
+
+    detectLocation();
   }, []);
 
   const handleRecordingComplete = (recordingData) => {
@@ -64,6 +101,46 @@ function App() {
                   </Button>
                 );
               })}
+              
+              {/* Premium Badge */}
+              {isPremium() && (
+                <div className="flex items-center gap-1 bg-accent/20 text-accent px-2 py-1 rounded-full text-xs font-medium ml-2">
+                  <Crown className="w-3 h-3" />
+                  Premium
+                </div>
+              )}
+              
+              {/* Auth Buttons */}
+              {user ? (
+                <div className="flex items-center gap-2 ml-4">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setPricingModalOpen(true)}
+                  >
+                    {isPremium() ? 'Manage' : 'Upgrade'}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={signOut}
+                  >
+                    <LogOut className="w-4 h-4 mr-2" />
+                    Sign Out
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 ml-4">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setAuthModalOpen(true)}
+                  >
+                    <User className="w-4 h-4 mr-2" />
+                    Sign In
+                  </Button>
+                </div>
+              )}
             </nav>
 
             {/* Mobile Menu Button */}
@@ -117,8 +194,10 @@ function App() {
             />
             {selectedState && (
               <div className="flex items-center gap-2 text-white/70 text-sm">
-                <div className="w-2 h-2 bg-green-400 rounded-full"></div>
-                <span>Location detected: {stateData[selectedState]?.state}</span>
+                <div className={`w-2 h-2 rounded-full ${locationDetected ? 'bg-green-400' : 'bg-yellow-400'}`}></div>
+                <span>
+                  {locationDetected ? 'Location detected' : 'Location set'}: {stateData[selectedState]?.state}
+                </span>
               </div>
             )}
           </div>
@@ -225,7 +304,40 @@ function App() {
           </div>
         </div>
       </footer>
+
+      {/* Modals */}
+      <AuthModal 
+        isOpen={authModalOpen} 
+        onClose={() => setAuthModalOpen(false)} 
+      />
+      <PricingModal 
+        isOpen={pricingModalOpen} 
+        onClose={() => setPricingModalOpen(false)} 
+      />
+
+      {/* Toast Notifications */}
+      <Toaster 
+        position="top-right"
+        toastOptions={{
+          duration: 4000,
+          style: {
+            background: 'rgba(0, 0, 0, 0.8)',
+            color: '#fff',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            backdropFilter: 'blur(10px)',
+          },
+        }}
+      />
     </div>
+  );
+};
+
+// Main App component with AuthProvider
+function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }
 
